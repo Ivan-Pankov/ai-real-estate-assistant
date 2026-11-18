@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 
+import requests
 import streamlit as st
 
 from assistant import (
@@ -35,6 +36,129 @@ PROPERTY_IMAGES = {
 
 
 @st.cache_data
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def geocode_location(query):
+    """Resolve a district or city reference point using OpenStreetMap Nominatim."""
+    import time
+    time.sleep(1.1)
+    response = requests.get(
+        "https://nominatim.openstreetmap.org/search",
+        params={"q": query, "format": "jsonv2", "limit": 1, "countrycodes": "us"},
+        headers={"User-Agent": "AIRealEstateAssistantPortfolio/1.0"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    results = response.json()
+    if not results:
+        return None
+    return {"lat": float(results[0]["lat"]), "lon": float(results[0]["lon"])}
+
+
+def _distance_km(lat1, lon1, lat2, lon2):
+    from math import radians, sin, cos, asin, sqrt
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    value = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 6371 * 2 * asin(sqrt(value))
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_neighborhood_info(city, district, state):
+    """Fetch nearby mapped amenities around the geocoded district reference point."""
+    query = f"{district}, {city}, {state}, USA"
+    point = geocode_location(query)
+    if not point:
+        return {"error": "Не удалось определить координаты района в OpenStreetMap."}
+
+    lat, lon = point["lat"], point["lon"]
+    overpass_query = f"""
+    [out:json][timeout:25];
+    (
+      nwr(around:3000,{lat},{lon})["amenity"~"school|kindergarten|college|university|hospital|clinic|doctors|pharmacy|marketplace"];
+      nwr(around:3000,{lat},{lon})["shop"~"supermarket|mall|department_store"];
+      nwr(around:3000,{lat},{lon})["leisure"~"park|garden"];
+      nwr(around:3000,{lat},{lon})["landuse"="forest"];
+      nwr(around:3000,{lat},{lon})["natural"~"wood|water"];
+      nwr(around:3000,{lat},{lon})["water"="lake"];
+      nwr(around:3000,{lat},{lon})["highway"="bus_stop"];
+      nwr(around:3000,{lat},{lon})["railway"~"station|tram_stop"];
+      nwr(around:3000,{lat},{lon})["public_transport"="platform"];
+    );
+    out center tags;
+    """
+    response = requests.post(
+        "https://overpass-api.de/api/interpreter",
+        data={"data": overpass_query},
+        headers={"User-Agent": "AIRealEstateAssistantPortfolio/1.0"},
+        timeout=45,
+    )
+    response.raise_for_status()
+    elements = response.json().get("elements", [])
+
+    groups = {
+        "Образование": [],
+        "Торговля": [],
+        "Медицина": [],
+        "Парки и отдых": [],
+        "Природа и водоёмы": [],
+        "Транспорт": [],
+    }
+    seen = set()
+    for item in elements:
+        tags = item.get("tags", {})
+        name = tags.get("name") or tags.get("name:en") or tags.get("amenity") or tags.get("shop") or tags.get("leisure") or tags.get("natural") or tags.get("highway") or tags.get("railway")
+        if not name:
+            continue
+        coords = item.get("center", item)
+        item_lat, item_lon = coords.get("lat"), coords.get("lon")
+        if item_lat is None or item_lon is None:
+            continue
+
+        amenity, shop = tags.get("amenity"), tags.get("shop")
+        leisure, natural = tags.get("leisure"), tags.get("natural")
+        if amenity in ("school", "kindergarten", "college", "university"):
+            category = "Образование"
+        elif shop in ("supermarket", "mall", "department_store") or amenity == "marketplace":
+            category = "Торговля"
+        elif amenity in ("hospital", "clinic", "doctors", "pharmacy"):
+            category = "Медицина"
+        elif leisure in ("park", "garden"):
+            category = "Парки и отдых"
+        elif tags.get("landuse") == "forest" or natural in ("wood", "water") or tags.get("water") == "lake":
+            category = "Природа и водоёмы"
+        elif tags.get("highway") == "bus_stop" or tags.get("railway") in ("station", "tram_stop") or tags.get("public_transport") == "platform":
+            category = "Транспорт"
+        else:
+            continue
+
+        key = (category, str(name), round(float(item_lat), 5), round(float(item_lon), 5))
+        if key in seen:
+            continue
+        seen.add(key)
+        groups[category].append({
+            "name": str(name),
+            "distance": _distance_km(lat, lon, float(item_lat), float(item_lon)),
+        })
+
+    for category in groups:
+        groups[category].sort(key=lambda entry: entry["distance"])
+        groups[category] = groups[category][:5]
+
+    city_point = geocode_location(f"{city}, {state}, USA")
+    center_distance = (
+        _distance_km(lat, lon, city_point["lat"], city_point["lon"])
+        if city_point else None
+    )
+    return {
+        "groups": groups,
+        "center_distance": center_distance,
+        "reference": query,
+        "radius_km": 3,
+    }
+
+
 def load_properties():
     with DATA_PATH.open(encoding="utf-8") as file:
         return json.load(file)
@@ -819,80 +943,72 @@ if len(option_labels) >= 2:
 
         st.table(comparison_display)
 
-        # Comparison and Emily's analysis update automatically when both
-        # different properties are selected.
-        if selected_pair:
-            price_difference = abs(first["price"] - second["price"])
-            area_difference = abs(first["area_m2"] - second["area_m2"])
-            bedroom_difference = abs(first["bedrooms"] - second["bedrooms"])
+        # Replace the old price/size commentary with real mapped neighborhood context.
+        st.markdown("### 📍 Инфраструктура и окружение")
+        st.caption(
+            "Emily показывает объекты, отмеченные в OpenStreetMap в радиусе 3 км "
+            "от географического центра района. Это ориентир района, а не точка "
+            "конкретного дома: демонстрационный каталог не содержит адресов и координат."
+        )
 
-            with st.container(border=True):
-                st.markdown("### 💬 Анализ Emily")
-                st.write(
-                    f"Я сравнила **{first['id']}** и **{second['id']}** "
-                    "по цене, площади и количеству спален."
-                )
+        environment_col1, environment_col2 = st.columns(2)
+        for environment_col, prop in zip(
+            (environment_col1, environment_col2), (first, second)
+        ):
+            with environment_col:
+                st.markdown(f"#### {prop['id']} · {prop['district']}")
+                try:
+                    with st.spinner("Emily изучает инфраструктуру района..."):
+                        environment = get_neighborhood_info(
+                            prop["city"], prop["district"], prop["state"]
+                        )
+                except requests.RequestException as error:
+                    st.warning(
+                        "Не удалось получить данные OpenStreetMap. "
+                        "Попробуйте обновить страницу позже."
+                    )
+                    st.caption(f"Техническая причина: {error}")
+                    continue
+                except (ValueError, KeyError, TypeError) as error:
+                    st.warning("Не удалось обработать географические данные района.")
+                    st.caption(f"Техническая причина: {error}")
+                    continue
 
-                if first["price"] == second["price"]:
-                    st.write("**По цене:** стоимость обоих объектов одинаковая.")
+                if environment.get("error"):
+                    st.info(environment["error"])
+                    continue
+
+                if environment["center_distance"] is not None:
+                    st.write(
+                        f"**До центра города по прямой:** "
+                        f"около {environment['center_distance']:.1f} км."
+                    )
                 else:
-                    cheaper = (
-                        first if first["price"] < second["price"] else second
-                    )
-                    st.write(
-                        f"**По цене:** {cheaper['id']} дешевле на "
-                        f"${price_difference:,}."
+                    st.write("Расстояние до центра города пока недоступно.")
+
+                found_any = False
+                for category, places in environment["groups"].items():
+                    if not places:
+                        continue
+                    found_any = True
+                    st.markdown(f"**{category}**")
+                    for place in places:
+                        st.write(
+                            f"• {place['name']} · примерно "
+                            f"{place['distance']:.1f} км"
+                        )
+
+                if not found_any:
+                    st.info(
+                        "В OpenStreetMap пока не найдены отмеченные объекты "
+                        "инфраструктуры в радиусе 3 км."
                     )
 
-                if first["area_m2"] == second["area_m2"]:
-                    st.write("**По площади:** объекты имеют одинаковую площадь.")
-                else:
-                    larger = (
-                        first if first["area_m2"] > second["area_m2"] else second
-                    )
-                    st.write(
-                        f"**По площади:** {larger['id']} просторнее на "
-                        f"{area_difference} м²."
-                    )
-
-                if first["bedrooms"] == second["bedrooms"]:
-                    st.write(
-                        "**По спальням:** количество спален одинаковое."
-                    )
-                else:
-                    more_bedrooms = (
-                        first
-                        if first["bedrooms"] > second["bedrooms"]
-                        else second
-                    )
-                    st.write(
-                        f"**По спальням:** у {more_bedrooms['id']} "
-                        f"на {bedroom_difference} больше."
-                    )
-
-                st.markdown("#### Кому может подойти каждый вариант")
-                st.write(
-                    f"**{first['id']}:** {first['city']}, район "
-                    f"{first['district']}. Цена ${first['price']:,}, "
-                    f"площадь {first['area_m2']} м², "
-                    f"спален: {first['bedrooms']}."
-                )
-                st.write(
-                    f"**{second['id']}:** {second['city']}, район "
-                    f"{second['district']}. Цена ${second['price']:,}, "
-                    f"площадь {second['area_m2']} м², "
-                    f"спален: {second['bedrooms']}."
-                )
-
-                st.info(
-                    "Выбор зависит от бюджета и необходимого пространства. "
-                    "По имеющимся данным нельзя достоверно оценить состояние "
-                    "недвижимости, качество района или инвестиционную доходность."
-                )
                 st.caption(
-                    "Анализ Emily основан на демонстрационных данных каталога. "
-                    "Цены и фотографии условные."
+                    "Источник: OpenStreetMap. Расстояния рассчитаны по прямой "
+                    "от центра района; фактический маршрут может быть длиннее."
                 )
+
 else:
     st.info("Для сравнения необходимо минимум два объекта.")
 
