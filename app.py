@@ -76,24 +76,6 @@ st.markdown("""
     font-size: 0.95rem;
 }
 
-/* Emily comparison button */
-div[data-testid="stButton"]:has(button[kind="primary"]) button {
-    background: linear-gradient(135deg, #087a50, #10a66f);
-    color: #ffffff !important;
-    border: none;
-    border-radius: 12px;
-    min-height: 54px;
-    font-size: 17px;
-    font-weight: 700;
-    box-shadow: 0 4px 12px rgba(8, 122, 80, 0.22);
-}
-
-div[data-testid="stButton"]:has(button[kind="primary"]) button:hover {
-    background: linear-gradient(135deg, #06633f, #087a50);
-    color: #ffffff !important;
-    border: none;
-}
-
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background-color: white;
     border-radius: 14px;
@@ -262,8 +244,8 @@ def get_emily_response(message, properties):
     if any(word in lower_query for word in ("сравнить", "сравнение", "разница")):
         return (
             "Конечно! Откройте раздел «Сравнение недвижимости» ниже "
-            "в приложении, выберите два объекта и нажмите "
-            "«Попросить Emily сравнить»."
+            "в приложении и выберите два разных объекта. "
+            "Я автоматически покажу их сравнение и свой анализ."
         )
 
     if any(word in lower_query for word in ("помощь", "что умеешь", "возможности")):
@@ -837,15 +819,9 @@ if len(option_labels) >= 2:
 
         st.table(comparison_display)
 
-        if st.button(
-            "✨ Сравнить выбранные объекты",
-            use_container_width=True,
-            type="primary",
-            key="run_property_comparison"
-        ):
-            st.session_state.comparison_analyzed_pair = selected_pair
-
-        if st.session_state.get("comparison_analyzed_pair") == selected_pair:
+        # Comparison and Emily's analysis update automatically when both
+        # different properties are selected.
+        if selected_pair:
             price_difference = abs(first["price"] - second["price"])
             area_difference = abs(first["area_m2"] - second["area_m2"])
             bedroom_difference = abs(first["bedrooms"] - second["bedrooms"])
