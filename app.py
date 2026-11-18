@@ -750,7 +750,10 @@ for p in filtered:
 # PROPERTY COMPARISON
 st.divider()
 st.subheader("⚖️ Сравнение недвижимости")
-st.write("Выберите два объекта, чтобы Emily помогла оценить различия.")
+st.write(
+    "Выберите два объекта, чтобы Emily сравнила их характеристики "
+    "и помогла оценить различия."
+)
 
 property_options = {
     f"{p['id']} | {p['city']} | ${p['price']:,}": p
@@ -783,6 +786,7 @@ if len(option_labels) >= 2:
     else:
         first = property_options[first_label]
         second = property_options[second_label]
+        selected_pair = (first["id"], second["id"])
 
         image_col1, image_col2 = st.columns(2)
 
@@ -805,22 +809,22 @@ if len(option_labels) >= 2:
         st.markdown("### Характеристики объектов")
 
         comparison_rows = [
-            ("Тип недвижимости",
-             "Дом" if first["type"] == "house" else "Квартира / Condo",
-             "Дом" if second["type"] == "house" else "Квартира / Condo"),
+            (
+                "Тип недвижимости",
+                "Дом" if first["type"] == "house" else "Квартира / Condo",
+                "Дом" if second["type"] == "house" else "Квартира / Condo"
+            ),
             ("Район", first["district"], second["district"]),
             ("Цена", f"${first['price']:,}", f"${second['price']:,}"),
             ("Площадь", f"{first['area_m2']} м²", f"{second['area_m2']} м²"),
             ("Спальни", str(first["bedrooms"]), str(second["bedrooms"])),
-            ("Ванные комнаты", str(first["bathrooms"]), str(second["bathrooms"])),
+            (
+                "Ванные комнаты",
+                str(first["bathrooms"]),
+                str(second["bathrooms"])
+            ),
             ("Всего комнат", str(first["rooms"]), str(second["rooms"])),
         ]
-
-        comparison_table = {
-            "Параметр": [row[0] for row in comparison_rows],
-            first["id"]: [row[1] for row in comparison_rows],
-            second["id"]: [row[2] for row in comparison_rows],
-        }
 
         comparison_display = [
             {
@@ -834,70 +838,85 @@ if len(option_labels) >= 2:
         st.table(comparison_display)
 
         if st.button(
-            "💬 Попросить Emily сравнить",
+            "✨ Сравнить выбранные объекты",
             use_container_width=True,
             type="primary",
             key="run_property_comparison"
         ):
+            st.session_state.comparison_analyzed_pair = selected_pair
+
+        if st.session_state.get("comparison_analyzed_pair") == selected_pair:
             price_difference = abs(first["price"] - second["price"])
             area_difference = abs(first["area_m2"] - second["area_m2"])
             bedroom_difference = abs(first["bedrooms"] - second["bedrooms"])
 
-            st.markdown("### 💬 Анализ Emily")
-
-            if first["price"] == second["price"]:
-                st.write("Стоимость обоих объектов одинаковая.")
-            else:
-                cheaper = first if first["price"] < second["price"] else second
+            with st.container(border=True):
+                st.markdown("### 💬 Анализ Emily")
                 st.write(
-                    f"**По цене:** {cheaper['id']} дешевле на "
-                    f"${price_difference:,}."
+                    f"Я сравнила **{first['id']}** и **{second['id']}** "
+                    "по цене, площади и количеству спален."
                 )
 
-            if first["area_m2"] == second["area_m2"]:
-                st.write("Площадь объектов одинаковая.")
-            else:
-                larger = first if first["area_m2"] > second["area_m2"] else second
+                if first["price"] == second["price"]:
+                    st.write("**По цене:** стоимость обоих объектов одинаковая.")
+                else:
+                    cheaper = (
+                        first if first["price"] < second["price"] else second
+                    )
+                    st.write(
+                        f"**По цене:** {cheaper['id']} дешевле на "
+                        f"${price_difference:,}."
+                    )
+
+                if first["area_m2"] == second["area_m2"]:
+                    st.write("**По площади:** объекты имеют одинаковую площадь.")
+                else:
+                    larger = (
+                        first if first["area_m2"] > second["area_m2"] else second
+                    )
+                    st.write(
+                        f"**По площади:** {larger['id']} просторнее на "
+                        f"{area_difference} м²."
+                    )
+
+                if first["bedrooms"] == second["bedrooms"]:
+                    st.write(
+                        "**По спальням:** количество спален одинаковое."
+                    )
+                else:
+                    more_bedrooms = (
+                        first
+                        if first["bedrooms"] > second["bedrooms"]
+                        else second
+                    )
+                    st.write(
+                        f"**По спальням:** у {more_bedrooms['id']} "
+                        f"на {bedroom_difference} больше."
+                    )
+
+                st.markdown("#### Кому может подойти каждый вариант")
                 st.write(
-                    f"**По площади:** {larger['id']} просторнее на "
-                    f"{area_difference} м²."
-                )
-
-            if first["bedrooms"] == second["bedrooms"]:
-                st.write("Количество спален одинаковое.")
-            else:
-                more_bedrooms = (
-                    first if first["bedrooms"] > second["bedrooms"] else second
+                    f"**{first['id']}:** {first['city']}, район "
+                    f"{first['district']}. Цена ${first['price']:,}, "
+                    f"площадь {first['area_m2']} м², "
+                    f"спален: {first['bedrooms']}."
                 )
                 st.write(
-                    f"**По количеству спален:** у {more_bedrooms['id']} "
-                    f"на {bedroom_difference} больше."
+                    f"**{second['id']}:** {second['city']}, район "
+                    f"{second['district']}. Цена ${second['price']:,}, "
+                    f"площадь {second['area_m2']} м², "
+                    f"спален: {second['bedrooms']}."
                 )
 
-            st.markdown("#### Кому может подойти каждый вариант")
-
-            st.write(
-                f"**{first['id']}:** {first['city']}, район {first['district']}. "
-                f"Цена ${first['price']:,}, площадь {first['area_m2']} м², "
-                f"спален: {first['bedrooms']}."
-            )
-
-            st.write(
-                f"**{second['id']}:** {second['city']}, район {second['district']}. "
-                f"Цена ${second['price']:,}, площадь {second['area_m2']} м², "
-                f"спален: {second['bedrooms']}."
-            )
-
-            st.info(
-                "Выбор зависит от бюджета и необходимого пространства. "
-                "По имеющимся данным нельзя достоверно оценить состояние "
-                "недвижимости, качество района или инвестиционную доходность."
-            )
-
-            st.caption(
-                "Анализ Emily основан на демонстрационных данных каталога. "
-                "Цены и фотографии условные."
-            )
+                st.info(
+                    "Выбор зависит от бюджета и необходимого пространства. "
+                    "По имеющимся данным нельзя достоверно оценить состояние "
+                    "недвижимости, качество района или инвестиционную доходность."
+                )
+                st.caption(
+                    "Анализ Emily основан на демонстрационных данных каталога. "
+                    "Цены и фотографии условные."
+                )
 else:
     st.info("Для сравнения необходимо минимум два объекта.")
 
