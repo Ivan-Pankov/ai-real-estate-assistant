@@ -37,20 +37,45 @@ PROPERTY_IMAGES = {
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def geocode_location(query):
-    """Resolve a district or city reference point using OpenStreetMap Nominatim."""
+    """Resolve a district or city reference point with retry handling."""
     import time
-    time.sleep(1.1)
-    response = requests.get(
-        "https://nominatim.openstreetmap.org/search",
-        params={"q": query, "format": "jsonv2", "limit": 1, "countrycodes": "us"},
-        headers={"User-Agent": "AIRealEstateAssistantPortfolio/1.0"},
-        timeout=20,
+
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": query,
+        "format": "jsonv2",
+        "limit": 1,
+        "countrycodes": "us",
+    }
+    headers = {"User-Agent": "AIRealEstateAssistantPortfolio/1.0"}
+    last_error = None
+
+    # Respect Nominatim's usage policy and retry temporary network failures.
+    for attempt in range(3):
+        time.sleep(1.1)
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=(10, 25),
+            )
+            response.raise_for_status()
+            results = response.json()
+            if not results:
+                return None
+            return {
+                "lat": float(results[0]["lat"]),
+                "lon": float(results[0]["lon"]),
+            }
+        except (requests.RequestException, ValueError, KeyError, TypeError) as error:
+            last_error = error
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+
+    raise requests.RequestException(
+        f"Nominatim не ответил после 3 попыток: {last_error}"
     )
-    response.raise_for_status()
-    results = response.json()
-    if not results:
-        return None
-    return {"lat": float(results[0]["lat"]), "lon": float(results[0]["lon"])}
 
 
 def _distance_km(lat1, lon1, lat2, lon2):
@@ -85,14 +110,40 @@ def get_neighborhood_info(city, district, state):
     );
     out center tags;
     """
-    response = requests.post(
+    # Public Overpass instances can be busy or temporarily unavailable.
+    # Try independent endpoints in sequence instead of relying on one server.
+    overpass_endpoints = (
+        "https://overpass.kumi.systems/api/interpreter",
         "https://overpass-api.de/api/interpreter",
-        data={"data": overpass_query},
-        headers={"User-Agent": "AIRealEstateAssistantPortfolio/1.0"},
-        timeout=45,
+        "https://overpass.private.coffee/api/interpreter",
     )
-    response.raise_for_status()
-    elements = response.json().get("elements", [])
+    headers = {
+        "User-Agent": "AIRealEstateAssistantPortfolio/1.0",
+        "Accept": "application/json",
+    }
+    elements = None
+    endpoint_errors = []
+
+    for endpoint in overpass_endpoints:
+        try:
+            response = requests.post(
+                endpoint,
+                data={"data": overpass_query},
+                headers=headers,
+                timeout=(10, 40),
+            )
+            response.raise_for_status()
+            payload = response.json()
+            elements = payload.get("elements", [])
+            break
+        except (requests.RequestException, ValueError, TypeError) as error:
+            endpoint_errors.append(f"{endpoint}: {error}")
+
+    if elements is None:
+        details = " | ".join(endpoint_errors)
+        raise requests.RequestException(
+            "Все резервные серверы Overpass недоступны. " + details
+        )
 
     groups = {
         "Образование": [],
