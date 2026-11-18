@@ -35,9 +35,6 @@ PROPERTY_IMAGES = {
 }
 
 
-@st.cache_data
-
-
 @st.cache_data(ttl=86400, show_spinner=False)
 def geocode_location(query):
     """Resolve a district or city reference point using OpenStreetMap Nominatim."""
@@ -159,6 +156,7 @@ def get_neighborhood_info(city, district, state):
     }
 
 
+@st.cache_data
 def load_properties():
     with DATA_PATH.open(encoding="utf-8") as file:
         return json.load(file)
