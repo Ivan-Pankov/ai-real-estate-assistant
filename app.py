@@ -11,6 +11,8 @@ from assistant import (
     recommend_properties,
 )
 
+from ai_client import generate_ai_response
+
 
 
 st.set_page_config(
@@ -539,7 +541,7 @@ div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"
 
 
 
-def get_emily_response(message, properties, language=None):
+def get_emily_response(message, properties, language=None, history=None):
     """Generate a local demo response in the selected language."""
     language = language or LANG
     is_en = language == "en"
@@ -572,6 +574,42 @@ def get_emily_response(message, properties, language=None):
             "Здравствуйте! Я Emily. Могу помочь найти дом или квартиру "
             "в Майами, Остине или Сан-Франциско. "
             "Например, напишите: «Дом в Майами до 500 тысяч долларов»."
+        )
+
+    # Route general real estate questions to the OpenAI assistant.
+    general_question_starters = (
+        "как ", "почему ", "что ", "какие ", "какой ", "какая ",
+        "объясни ", "расскажи ", "what ", "how ", "why ",
+        "which ", "explain ", "tell me ",
+    )
+    real_estate_topics = (
+        "недвижим", "покупк", "первого дома", "ипотек", "страхов",
+        "налог", "первоначальн", "первый взнос", "осмотр дома",
+        "mortgage", "buying a home", "first home", "real estate",
+        "property tax", "closing cost", "down payment",
+        "home inspection",
+    )
+    known_cities = (
+        "майами", "остин", "сан-франциско",
+        "miami", "austin", "san francisco",
+    )
+    budget_markers = (
+        "$", "€", "доллар", "тысяч", "тыс.", "budget",
+        "under ", "below ",
+    )
+
+    is_general_question = (
+        lower_query.startswith(general_question_starters)
+        and any(topic in lower_query for topic in real_estate_topics)
+        and not any(city in lower_query for city in known_cities)
+        and not any(marker in lower_query for marker in budget_markers)
+    )
+
+    if is_general_question:
+        return generate_ai_response(
+            query,
+            history=history,
+            language=language,
         )
 
     results, criteria = search_properties(properties, query)
@@ -733,14 +771,10 @@ def get_emily_response(message, properties, language=None):
             "два варианта. Попробуйте задать конкретный запрос."
         )
 
-    return (
-        "I'm currently running in demo mode and use the sample property "
-        "catalogue. Please specify a city, property type, and budget. "
-        "For example: 'An apartment in Austin under $400,000'."
-        if is_en else
-        "Пока я работаю в демонстрационном режиме и отвечаю "
-        "по каталогу недвижимости. Укажите город, тип объекта "
-        "и бюджет. Например: «Квартира в Остине до 400 тысяч долларов»."
+    return generate_ai_response(
+        query,
+        history=history,
+        language=language,
     )
 
 
@@ -751,7 +785,10 @@ def set_emily_query(query):
         {"role": "user", "content": query}
     )
 
-    answer = get_emily_response(query, properties, LANG)
+    answer = get_emily_response(
+        query, properties, LANG,
+        st.session_state.emily_messages[:-1]
+    )
 
     if isinstance(answer, dict):
         st.session_state.emily_messages.append(
@@ -876,7 +913,10 @@ with st.container(border=True):
             {"role": "user", "content": user_message}
         )
 
-        answer = get_emily_response(user_message, properties, LANG)
+        answer = get_emily_response(
+            user_message, properties, LANG,
+            st.session_state.emily_messages[:-1]
+        )
 
         if isinstance(answer, dict):
             st.session_state.emily_messages.append(
