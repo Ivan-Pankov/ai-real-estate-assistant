@@ -656,35 +656,12 @@ def get_emily_response(message, properties, language=None, history=None):
                 "Например, $500,000."
             )
 
-        recommendations = recommend_properties(
-            results,
-            budget=criteria["max_price"],
-            min_bedrooms=criteria["bedrooms"],
+        return generate_ai_response(
+            query,
+            history=history,
+            language=language,
+            properties=results,
         )
-
-        if not recommendations:
-            return (
-                "There are no suitable properties in the demo catalogue "
-                "for these criteria. Try adjusting your search."
-                if is_en else
-                "В демонстрационном каталоге нет подходящих объектов "
-                "в рамках указанных условий. Попробуйте изменить параметры."
-            )
-
-        return {
-            "kind": "property_recommendation",
-            "content": (
-                "I compared suitable properties by area, number of bedrooms, "
-                "and remaining budget. Here is my recommendation:"
-                if is_en else
-                "Я сравнила подходящие объекты по площади, "
-                "количеству спален и остатку бюджета. "
-                "Вот моя рекомендация:"
-            ),
-            "properties": recommendations,
-            "total": len(results),
-            "budget": criteria["max_price"],
-        }
 
     if criteria["property_type"] and not criteria["city"] and not criteria["state"]:
         st.session_state.emily_pending_query = query
@@ -713,33 +690,12 @@ def get_emily_response(message, properties, language=None, history=None):
         )
 
     if recognized:
-        if not results:
-            if is_en:
-                return (
-                    "I understood your request: "
-                    + "; ".join(recognized)
-                    + ". However, there are no matching properties in the "
-                    "demo catalogue. Try changing the budget, city, "
-                    "or number of bedrooms."
-                )
-            return (
-                "Я поняла ваш запрос: "
-                + "; ".join(recognized)
-                + ". Но в демонстрационном каталоге нет объектов "
-                "с такими параметрами. Попробуйте изменить бюджет, "
-                "город или количество спален."
-            )
-
-        return {
-            "kind": "property_results",
-            "content": (
-                "I found matching properties in the demo catalogue:"
-                if is_en else
-                "Я нашла подходящие варианты в демонстрационном каталоге:"
-            ),
-            "properties": results,
-            "total": len(results)
-        }
+        return generate_ai_response(
+            query,
+            history=history,
+            language=language,
+            properties=results,
+        )
 
     if any(word in lower_query for word in (
         "сравнить", "сравнение", "разница",
@@ -868,6 +824,10 @@ with st.container(border=True):
                     st.markdown(f"### {t('recommendations')}")
 
                 st.markdown(message["content"])
+
+                tool_name = message.get("tool_name")
+                if tool_name:
+                    st.caption(f"Function Calling: `{tool_name}`")
 
                 for index, prop in enumerate(message["properties"], start=1):
                     with st.container(border=True):
