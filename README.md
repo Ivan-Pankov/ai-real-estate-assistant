@@ -19,6 +19,18 @@ The application uses a small local dataset of fictional US property listings. It
 
 ## Application Screenshots
 
+### Emily: Main Interface
+
+The bilingual Streamlit interface includes Emily's introduction, chat, quick prompts, and property filters.
+
+![Emily main interface](assets/screenshots/01-homepage-emily.jpg)
+
+### AI Recommendation with Function Calling
+
+For a natural-language request, the model selects the `recommend_properties` Python tool. The application executes the function against the local demo dataset, and the model explains the returned recommendation.
+
+![Function Calling recommendation](assets/screenshots/02-function-calling-recommendation.jpg)
+
 ### Property Comparison
 
 The interface lets users select two properties and compare their key characteristics side by side.
