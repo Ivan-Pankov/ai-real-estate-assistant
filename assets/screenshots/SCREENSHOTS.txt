@@ -1,0 +1,7 @@
+Portfolio screenshots for README.md:
+- 01-homepage-emily.jpg
+- 02-function-calling-recommendation.jpg
+- 05a-property-comparison.jpg
+- 05b-property-comparison-table.jpg
+- 05c-neighborhood-analysis-overview.jpg
+- 05d-neighborhood-analysis-details.jpg
