@@ -17,6 +17,26 @@ The application uses a small local dataset of fictional US property listings. It
 - Conversation history.
 - Automated tests using pytest.
 
+## Application Screenshots
+
+### Property Comparison
+
+The interface lets users select two properties and compare their key characteristics side by side.
+
+![Side-by-side property cards](assets/screenshots/05a-property-comparison.jpg)
+
+![Property characteristics comparison table](assets/screenshots/05b-property-comparison-table.jpg)
+
+### Neighborhood Context Analysis
+
+Emily displays nearby points of interest from OpenStreetMap for each neighborhood, grouped by category.
+
+![Neighborhood analysis overview](assets/screenshots/05c-neighborhood-analysis-overview.jpg)
+
+![Neighborhood amenities and source note](assets/screenshots/05d-neighborhood-analysis-details.jpg)
+
+**Data note:** The demo catalog does not contain exact property addresses or coordinates. Distances are calculated from the geographic center of each neighborhood, so these results provide neighborhood context rather than property-specific proximity or verified travel routes.
+
 ## Technology Stack
 
 Python, Streamlit, OpenAI Responses API, OpenAI Python SDK, Function Calling, JSON, pytest, Git and GitHub.
